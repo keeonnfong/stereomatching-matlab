@@ -1,0 +1,105 @@
+%% rename images
+
+d = dir('gray*'); % for plus coordinates
+openvar d;
+%%
+ct = 1;
+for i=[7:-1:1 8:17]
+    movefile(d(i).name,['CalibrationPlan_',sprintf('%02d',ct),'_cam1.tif']);
+    ct = ct+1;
+end
+
+%%
+d = dir('white*');
+ct = 1;
+for i=[7:-1:1 8:17]
+    movefile(d(i).name,['CalibrationPlan_',sprintf('%02d',ct),'_cam2.tif']);
+    ct = ct+1;
+end
+
+%%
+d = dir('*cam1.tif'); e = dir('*cam2.tif');
+for i=1%:numel(d)
+    fA = imread(d(i).name);
+    fB = imread(e(i).name);
+    figure(1); subplot(121); imshow(fA); caxis([0 2^12]);
+    subplot(122); imshow(fB); caxis([0 2^12]);
+%     pause();
+end
+%% make calibration
+
+dirIn = pwd
+zPlanes = -7:1:9
+camName = {'A','B'};
+gridSpace = 1e-3;
+th = [1400,1400];
+dotSize = 10;
+lnoise = 1;
+blackDots = true;
+extension = 'tif';
+FirstPlane = 16;
+FirstCam = 1;
+
+[calib] = MakeCalibration(dirIn,zPlanes,camName,gridSpace,th,dotSize,lnoise,blackDots,extension,FirstPlane,FirstCam)
+
+%% check calibration
+dirIn = pwd
+kcam = 1;
+zPlanes = -7:1:9
+for zplanes = 1:11
+    for kcam = 1:2
+        Calib_visualisation(dirIn,kcam,zplanes);caxis([0 2^8]);
+        pause(0.5);
+    end
+end
+
+%% make calibration files into 2D position input (for fidelity checking)
+cd C:\KeeOnn\CAPSULE_local\2022-10-13-2cam_calibration\Processed_DATA\MyExperiment1
+load('calib.mat')
+nframes = 11;
+for cam = 1
+    for z = 1:11
+        CC(z).X = calib(z,cam).pimg(:,1)';
+        CC(z).Y = calib(z,cam).pimg(:,2)';
+    end
+end
+save('centers_cam1.mat','CC','nframes');
+    
+for cam = 2
+    for z = 1:11
+        CC(z).X = calib(z,cam).pimg(:,1)';
+        CC(z).Y = calib(z,cam).pimg(:,2)';
+    end
+end
+save('centers_cam2.mat','CC','nframes');
+
+%% Make Centers2Rays DAT
+
+session.input_path = 'C:\KeeOnn\CAPSULE_local\2022-10-13-2cam_calibration\';
+session.output_path = 'C:\KeeOnn\CAPSULE_local\2022-10-13-2cam_calibration\';
+ManipName = 'MyExperiment1\';
+Calib = 'C:\KeeOnn\CAPSULE_local\2022-10-13-2cam_calibration\DATA\MyCalibration\calib.mat';
+camID = [1,2]; Ttype = 'T3';
+[P,V]=Centers2Rays(session,ManipName,Calib,camID);
+%% Read 3D DAT
+clear all; clc;
+DATfile = 'matchedcam2_0-11.dat';
+DATfile = [pwd '\' DATfile]
+[pos3D,other,params] = readMatches(DATfile,11);
+% pos3D = pos3D(find(pos3D(:,4)<9),:);
+load('calib.mat')
+for showframe = 4
+    tolerance = 50;
+    figure(1);clf; idx = find(pos3D(:,1)==showframe); idx2 = find(pos3D(:,4)<tolerance);idx = intersect(idx,idx2); 
+    scatter3(pos3D(idx,2),pos3D(idx,3),pos3D(idx,4),pos3D(idx,1)*0+20,pos3D(idx,5)*0,'filled'); view(-30,1); daspect([1 1 1]);zlim([0 10]); colormap('gray'); caxis([0 1]);
+    hold on; axis tight;
+    scatter3(calib(showframe).pos3D(:,1),calib(showframe).pos3D(:,2),calib(showframe).pos3D(:,3));
+    zpos = round(pos3D(idx,4));
+    percentsuccess(showframe) = sum(zpos==(showframe-1))/size(zpos,1)
+%     pause();
+end
+%%
+session.input_path = 'C:\KeeOnn\MoraPTVdata\PTV\2022-06-27-25M-IN2P3-DEWARP\';
+session.output_path = 'C:\KeeOnn\MoraPTVdata\PTV\2022-06-27-25M-IN2P3-DEWARP\';
+[tracks,traj]=track3d(session, "MyExperiment1", "matchedcam2_1-11",0.2,5,1,5,1);
+
